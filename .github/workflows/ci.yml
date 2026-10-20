@@ -74,92 +74,57 @@ jobs:
 
   deploy:
     name: Continuous Deployment to OCI
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, ARM64]
     needs: build-and-test
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     environment: production
+    timeout-minutes: 15
 
     steps:
-      
-      - name: Prepare SSH
-        env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      - name: Verify OCI runner and Docker access
         run: |
           set -euo pipefail
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          echo "Runner host: $(hostname)"
+          echo "Runner user: $(whoami)"
 
-          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci_key
-          chmod 600 ~/.ssh/oci_key
+          test -d "$HOME/apps/cloud-devops-smart.sa-semicolon-team/.git"
 
-          echo "Checking OCI host..."
-          if ! timeout 10 bash -c 'cat < /dev/null > /dev/tcp/$1/22' _ "$OCI_HOST"; then
-            echo "::error::GitHub Actions cannot reach OCI on TCP port 22."
-            exit 1
-          fi
+          sudo -n docker version
+          sudo -n docker compose version
 
-          echo "TCP port 22 is reachable."
-          echo "Retrieving SSH host key..."
-          ssh-keyscan -T 10 -v -H "$OCI_HOST" \
-            >> ~/.ssh/known_hosts 2> /tmp/ssh-keyscan.log || {
-              cat /tmp/ssh-keyscan.log
-              echo "::error::ssh-keyscan failed."
+      - name: Deploy latest master
+        run: |
+          set -euo pipefail
+
+          cd "$HOME/apps/cloud-devops-smart.sa-semicolon-team"
+
+          echo "Checking repository state..."
+          git status --short
+
+          echo "Pulling latest master..."
+          git pull --ff-only origin master
+
+          echo "Rebuilding and restarting API..."
+          sudo -n docker compose up -d --build api
+
+          echo "Checking API health..."
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:3000/health; then
+              echo
+              echo "API health check passed."
+              break
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "API health check failed after 60 seconds."
+              sudo -n docker compose logs --tail=100 api
               exit 1
-            }
+            fi
 
-          test -s ~/.ssh/known_hosts
-          echo "SSH host key retrieved successfully."
-          
+            sleep 2
+          done
 
-      - name: Test SSH connection
-        env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
-        run: |
-          set -euo pipefail
-
-          ssh -v \
-            -i ~/.ssh/oci_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            "$OCI_USER@$OCI_HOST" \
-            'echo "SSH connection successful"; whoami; hostname'
-
-      - name: Deploy to OCI
-        env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
-        run: |
-          set -euo pipefail
-
-          ssh -i ~/.ssh/oci_key \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            "$OCI_USER@$OCI_HOST" \
-            'set -e
-             cd ~/apps/cloud-devops-smart.sa-semicolon-team
-
-             echo "Checking repository..."
-             git status --short
-
-             echo "Pulling latest master..."
-             git pull --ff-only origin master
-
-             echo "Rebuilding and restarting API..."
-             sudo docker compose up -d --build api
-
-             echo "Checking API health..."
-             curl --fail --silent --show-error http://127.0.0.1:3000/health
-
-             echo
-             echo "Deployment completed successfully."
-
-             echo "Container status:"
-             sudo docker compose ps'
-
-      - name: Remove temporary SSH key
-        if: always()
-        run: rm -f ~/.ssh/oci_key
+          echo "Container status:"
+          sudo -n docker compose ps
