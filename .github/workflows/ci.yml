@@ -80,10 +80,9 @@ jobs:
     environment: production
 
     steps:
-      - name: Deploy to OCI
+      - name: Prepare SSH
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
           OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
@@ -96,13 +95,53 @@ jobs:
 
           ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
 
+      - name: Test SSH connection
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          set -euo pipefail
+
+          ssh -v \
+            -i ~/.ssh/oci_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "$OCI_USER@$OCI_HOST" \
+            'echo "SSH connection successful"; whoami; hostname'
+
+      - name: Deploy to OCI
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          set -euo pipefail
+
           ssh -i ~/.ssh/oci_key \
             -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
             "$OCI_USER@$OCI_HOST" \
             'set -e
              cd ~/apps/cloud-devops-smart.sa-semicolon-team
-             git pull --ff-only origin master
-             sudo docker compose up -d --build api
-             curl --fail --silent --show-error http://127.0.0.1:3000/health'
 
-          rm -f ~/.ssh/oci_key
+             echo "Checking repository..."
+             git status --short
+
+             echo "Pulling latest master..."
+             git pull --ff-only origin master
+
+             echo "Rebuilding and restarting API..."
+             sudo docker compose up -d --build api
+
+             echo "Checking API health..."
+             curl --fail --silent --show-error http://127.0.0.1:3000/health
+
+             echo
+             echo "Deployment completed successfully."
+
+             echo "Container status:"
+             sudo docker compose ps'
+
+      - name: Remove temporary SSH key
+        if: always()
+        run: rm -f ~/.ssh/oci_key
