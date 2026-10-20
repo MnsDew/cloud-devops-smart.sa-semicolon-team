@@ -1,12 +1,23 @@
-name: CI
+
+name: CI/CD
 
 on:
   push:
     branches: [main, master]
   pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
 
 jobs:
   build-and-test:
+    name: Continuous Integration
     runs-on: ubuntu-latest
 
     services:
@@ -60,3 +71,38 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  deploy:
+    name: Continuous Deployment to OCI
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    environment: production
+
+    steps:
+      - name: Deploy to OCI
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci_key
+          chmod 600 ~/.ssh/oci_key
+
+          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/oci_key \
+            -o IdentitiesOnly=yes \
+            "$OCI_USER@$OCI_HOST" \
+            'set -e
+             cd ~/apps/cloud-devops-smart.sa-semicolon-team
+             git pull --ff-only origin master
+             sudo docker compose up -d --build api
+             curl --fail --silent --show-error http://127.0.0.1:3000/health'
+
+          rm -f ~/.ssh/oci_key
