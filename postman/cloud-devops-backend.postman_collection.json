@@ -1,0 +1,502 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Cloud DevOps Backend",
+    "description": "Importable Postman collection for cloud-devops-backend.\n\n**Auth:** None — this API has no authentication. Do not send Authorization headers.\n\n**Base URL:** Set `baseUrl` collection variable (default `http://localhost:3000`).\n\n**Flow tip:** Run Create Task (success) first — it saves `taskId` for Get / Update / Delete requests.\n\n**Task status values:** `TODO` | `IN_PROGRESS` | `DONE`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "taskId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Liveness and readiness probes. No body. No auth.",
+      "item": [
+        {
+          "name": "Liveness — GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "**Auth:** none\n**Body:** none\n**Expected:** `200` `{ status: \"ok\", service, timestamp }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness — GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/ready",
+            "description": "**Auth:** none\n**Body:** none\n**Expected:** `200` when DB is up; `503` when DB is down"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks — Happy path",
+      "description": "CRUD success cases. Create saves `taskId` for the rest.",
+      "item": [
+        {
+          "name": "Create Task — minimal (title only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set('taskId', json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ship MVP\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "**Auth:** none\n**Where:** Body (JSON)\n\n| Field | Required | Notes |\n|-------|----------|-------|\n| title | yes | string, trim, 1–200 chars |\n| description | no | string, max 5000, or null |\n| status | no | `TODO` (default) / `IN_PROGRESS` / `DONE` |\n\n**Expected:** `201` `{ data: task }` — script saves `taskId`"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Task — full body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.id) {",
+                  "    pm.collectionVariables.set('taskId', json.data.id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Deliver first milestone\",\n  \"description\": \"Write docs, tests, and deploy pipeline\",\n  \"status\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "**Auth:** none\n**Where:** Body (JSON) — all allowed create fields\n**Expected:** `201`"
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks — default",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "**Auth:** none\n**Where:** Query (optional)\n\nDefaults: `page=1`, `limit=20`\n\n**Expected:** `200` `{ data: [], meta: { page, limit, total, totalPages } }`"
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks — pagination + status filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?page=1&limit=2&status=TODO",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "integer ≥ 1 (default 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "2",
+                  "description": "integer 1–100 (default 20)"
+                },
+                {
+                  "key": "status",
+                  "value": "TODO",
+                  "description": "optional: TODO | IN_PROGRESS | DONE"
+                }
+              ]
+            },
+            "description": "**Auth:** none\n**Where:** Query params (not body)\n**Expected:** `200`"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Task by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "**Auth:** none\n**Where:** Path param `id` (UUID)\n\nUses collection variable `{{taskId}}` from Create Task.\n\n**Expected:** `200` `{ data: task }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task — status only",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "**Auth:** none\n**Where:** Path `id` (UUID) + Body (JSON)\n\nAt least one of: `title`, `description`, `status`\n\n**Expected:** `200` `{ data: task }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task — all fields",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Ship MVP (updated)\",\n  \"description\": \"Almost done\",\n  \"status\": \"DONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "**Auth:** none\n**Where:** Path + Body\n**Expected:** `200`"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Task — clear description (null)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "**Auth:** none\n**Where:** Body — `description` may be `null` to clear it\n**Expected:** `200`"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "**Auth:** none\n**Where:** Path param `id` (UUID)\n**Body:** none\n**Expected:** `204` empty body"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks — Error / edge cases",
+      "description": "Validation and not-found cases to verify error responses.",
+      "item": [
+        {
+          "name": "Create — empty title (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "**Expected:** `400` `{ error: { code: \"VALIDATION_ERROR\", ... } }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Create — missing title (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"no title here\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "**Expected:** `400` VALIDATION_ERROR"
+          },
+          "response": []
+        },
+        {
+          "name": "Create — invalid status (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad status\",\n  \"status\": \"PENDING\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "Status must be TODO | IN_PROGRESS | DONE\n**Expected:** `400`"
+          },
+          "response": []
+        },
+        {
+          "name": "Create — title too long (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks",
+            "description": "Title max 200 chars\n**Expected:** `400`"
+          },
+          "response": []
+        },
+        {
+          "name": "Get — invalid UUID (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks/not-a-uuid",
+            "description": "**Where:** Path must be a UUID\n**Expected:** `400` VALIDATION_ERROR"
+          },
+          "response": []
+        },
+        {
+          "name": "Get — unknown UUID (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks/11111111-1111-1111-1111-111111111111",
+            "description": "**Expected:** `404` `{ error: { code: \"NOT_FOUND\" } }`"
+          },
+          "response": []
+        },
+        {
+          "name": "Update — empty body (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+            "description": "At least one field required\n**Expected:** `400`\n\nTip: run Create Task first so `taskId` is set (otherwise you may get 400 for invalid UUID)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update — unknown id (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/v1/tasks/11111111-1111-1111-1111-111111111111",
+            "description": "**Expected:** `404`"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete — unknown id (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/tasks/11111111-1111-1111-1111-111111111111",
+            "description": "**Expected:** `404`"
+          },
+          "response": []
+        },
+        {
+          "name": "List — invalid limit (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?page=1&limit=999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "999",
+                  "description": "max is 100"
+                }
+              ]
+            },
+            "description": "limit max 100\n**Expected:** `400`"
+          },
+          "response": []
+        },
+        {
+          "name": "List — invalid status filter (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?status=PENDING",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
+            },
+            "description": "**Expected:** `400`"
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown route (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/does-not-exist",
+            "description": "**Expected:** `404` not-found handler"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
